@@ -27,6 +27,8 @@ make ENV=${SOME_UNIQUE_NAME} destroy
 A Kubernetes cluster is also required to run these tests. [Minikube](https://minikube.sigs.k8s.io/docs/) is an easy way to deploy a cluster
 on your computer if you don't have access to a cluster.
 
+Once you have a cluster, install Keda. See [this](https://keda.sh/docs/2.6/deploy/#install) page for details.
+
 ## Running the Tests
 
 Ensure your kubectl context is set to the cluster to test against and run:
