@@ -1,0 +1,15 @@
+# Intellij files
+.idea
+
+# Python files
+out
+*.pyc
+.pytest_cache
+__pycache__
+
+# Terraform files
+*.tfstate*
+*.tfplan
+generated
+.terraform
+.terraform.lock.hcl

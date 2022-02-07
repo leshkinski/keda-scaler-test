@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: combo-scaled-object-secret
+  namespace: {{ .Values.namespace }}
+type: Opaque
+data:
+  appId: {{ .Values.appInsightsId }}
+  clientId: {{ .Values.azurePrincipalId }}
+  clientSecret: {{ .Values.azurePrincipalSecret }}
+  tenantId: {{ .Values.azureTenantId }}
+  workspaceId: {{ .Values.workspaceId }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: combo-trigger-auth
+  namespace: {{ .Values.namespace }}
+spec:
+  secretTargetRef:
+    - parameter: applicationInsightsId
+      name: combo-scaled-object-secret
+      key: appId
+    - parameter: activeDirectoryClientId
+      name: combo-scaled-object-secret
+      key: clientId
+    - parameter: activeDirectoryClientPassword
+      name: combo-scaled-object-secret
+      key: clientSecret
+    - parameter: clientId
+      name: combo-scaled-object-secret
+      key: clientId
+    - parameter: clientSecret
+      name: combo-scaled-object-secret
+      key: clientSecret
+    - parameter: tenantId
+      name: combo-scaled-object-secret
+      key: tenantId
+    - parameter: workspaceId
+      name: combo-scaled-object-secret
+      key: workspaceId
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: combo-scaled-object
+  namespace: {{ .Values.namespace }}
+spec:
+  cooldownPeriod: 5
+  pollingInterval: 5
+  minReplicaCount: {{ .Values.minReplicas }}
+  maxReplicaCount: {{ .Values.maxReplicas }}
+  scaleTargetRef:
+    name: test-deployment
+  advanced:
+    restoreToOriginalReplicaCount: false
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 10
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+  triggers:
+    - type: cron
+      metadata:
+        timezone: {{ .Values.timezone }}
+        start: {{ .Values.startMinute }} {{ .Values.startHour }} * * 0-6
+        end: {{ .Values.endMinute }} {{ .Values.endHour }} * * 0-6
+        desiredReplicas: "{{ .Values.desiredReplicas }}"
+#    - type: azure-app-insights
+#      metadata:
+#        metricId: "customMetrics/{{ .Values.metric }}"
+#        metricAggregationTimespan: "0:2"
+#        metricAggregationType: max
+#        metricFilter: cloud/roleName eq '{{ .Values.role }}'
+#        targetValue: "{{ .Values.targetValue }}"
+#      authenticationRef:
+#        name: combo-trigger-auth
+    - type: azure-log-analytics
+      metadata:
+        query: |
+          AppMetrics
+          | where Name == "test-app-insights-metric"
+          | where AppRoleName == "test-app-insights-role"
+          | where TimeGenerated > ago(2m)
+          | summarize max(Max)
+        threshold: "{{ .Values.targetValue }}"
+      authenticationRef:
+        name: combo-trigger-auth

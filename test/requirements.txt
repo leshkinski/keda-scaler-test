@@ -1,0 +1,2 @@
+opencensus-ext-azure==1.1.0
+PyYAML==6.0
