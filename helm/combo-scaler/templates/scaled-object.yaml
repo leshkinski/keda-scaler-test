@@ -66,9 +66,15 @@ spec:
     - type: cron
       metadata:
         timezone: {{ .Values.timezone }}
-        start: {{ .Values.startMinute }} {{ .Values.startHour }} * * 0-6
-        end: {{ .Values.endMinute }} {{ .Values.endHour }} * * 0-6
-        desiredReplicas: "{{ .Values.desiredReplicas }}"
+        start: {{ .Values.ramp.startMinute }} {{ .Values.ramp.startHour }} * * 0-6
+        end: {{ .Values.ramp.endMinute }} {{ .Values.ramp.endHour }} * * 0-6
+        desiredReplicas: "{{ .Values.ramp.desiredReplicas }}"
+    - type: cron
+      metadata:
+        timezone: {{ .Values.timezone }}
+        start: {{ .Values.business.startMinute }} {{ .Values.business.startHour }} * * 0-6
+        end: {{ .Values.business.endMinute }} {{ .Values.business.endHour }} * * 0-6
+        desiredReplicas: "{{ .Values.business.desiredReplicas }}"
 #    - type: azure-app-insights
 #      metadata:
 #        metricId: "customMetrics/{{ .Values.metric }}"

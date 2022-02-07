@@ -67,16 +67,18 @@ class Scaler:
 
 class ComboScaler(Scaler):
     def __init__(
-            self, name: str, min_replicas: int, max_replicas: int, env: dict, desired_replicas: int,
+            self, name: str, min_replicas: int, max_replicas: int, env: dict,
+            ramp_desired_replicas: int, business_desired_replicas: int,
             target_value: int, metric: str, role: str):
         super().__init__(name, min_replicas, max_replicas, env)
-        self.desired_replicas = desired_replicas
+        self.ramp_desired_replicas = ramp_desired_replicas
+        self.business_desired_replicas = business_desired_replicas
         self.metric = metric
         self.cloud_role = role
         self.target_value = target_value
         self.measure = None
         self.mmap = None
-        self.cron_duration_mins = 2
+        self.business_cron_duration_mins = 2
 
     def init_metric_exporter(self):
         self.measure = measure_module.MeasureInt(self.metric, self.metric)
@@ -99,16 +101,27 @@ class ComboScaler(Scaler):
 
     def helm_values(self):
         now = datetime.datetime.now()
-        start_time = now - datetime.timedelta(minutes=1)
-        end_time = now + datetime.timedelta(minutes=self.cron_duration_mins)
+        ramp_start_time = now - datetime.timedelta(minutes=1)
+        business_start_time = ramp_start_time + datetime.timedelta(minutes=1)
+        business_end_time = business_start_time + datetime.timedelta(minutes=self.business_cron_duration_mins)
+        ramp_end_time = business_end_time + datetime.timedelta(minutes=2)
         values = super().helm_values()
         values.update({
-            'desiredReplicas': self.desired_replicas,
             'timezone': self.test_vars['TIMEZONE'],
-            'startMinute': start_time.minute,
-            'startHour': start_time.hour,
-            'endMinute': end_time.minute,
-            'endHour': end_time.hour,
+            'ramp': {
+                'desiredReplicas': self.ramp_desired_replicas,
+                'startMinute': ramp_start_time.minute,
+                'startHour': ramp_start_time.hour,
+                'endMinute': ramp_end_time.minute,
+                'endHour': ramp_end_time.hour
+            },
+            'business': {
+                'desiredReplicas': self.business_desired_replicas,
+                'startMinute': business_start_time.minute,
+                'startHour': business_start_time.hour,
+                'endMinute': business_end_time.minute,
+                'endHour': business_end_time.hour,
+            },
             'metric': self.metric,
             'role': self.cloud_role,
             'targetValue': self.target_value,
@@ -117,7 +130,7 @@ class ComboScaler(Scaler):
         return values
 
 
-TEST_SCALER = ComboScaler('combo', 0, 3, TEST_ENV, 2, 10, APP_INSIGHTS_METRIC, APP_INSIGHTS_ROLE)
+TEST_SCALER = ComboScaler('combo', 0, 3, TEST_ENV, 1, 2, 10, APP_INSIGHTS_METRIC, APP_INSIGHTS_ROLE)
 
 
 class TestComboScaler(unittest.TestCase):
@@ -193,52 +206,33 @@ class TestComboScaler(unittest.TestCase):
     def log_test_step(cls, scaler: Scaler, msg: str):
         cls.logger.info(f'{scaler.namespace}/${scaler.name}: {msg}')
 
-    def do_test_cron_scale_up_and_down(self, min_replicas: int):
-        TEST_SCALER.set_min_replicas(min_replicas)
-
-        min_replicas = TEST_SCALER.min_replicas
-        desired_replicas = TEST_SCALER.desired_replicas
-
-        self.helm_upgrade(TEST_SCALER)
-
-        self.assert_replicas(
-            TEST_SCALER.namespace, desired_replicas, 30,
-            f'deployment should have scaled to {desired_replicas} replicas')
-
-        wait_sec = 90 if min_replicas == 0 else 390
-        start_time = datetime.datetime.now()
-        self.assert_replicas(
-            TEST_SCALER.namespace, min_replicas, wait_sec, f'deployment should have scaled to {min_replicas} replicas')
-        elapsed_time = datetime.datetime.now() - start_time
-        self.logger.info(f'scaled down in {elapsed_time.seconds} seconds')
-
-    @unittest.skip
-    def test_cron_scale_up_and_down_to_zero(self):
-        self.do_test_cron_scale_up_and_down(0)
-
-    @unittest.skip
-    def test_cron_scale_up_and_down_to_nonzero(self):
-        self.do_test_cron_scale_up_and_down(1)
-
     def test_scale_up_and_up(self):
         min_replicas = TEST_SCALER.min_replicas
         max_replicas = TEST_SCALER.max_replicas
-        desired_replicas = TEST_SCALER.desired_replicas
 
         self.logger.info('deploying scalers')
-        TEST_SCALER.cron_duration_mins = 14
+        TEST_SCALER.business_cron_duration_mins = 60
         self.helm_upgrade(TEST_SCALER)
 
-        self.logger.info('waiting for cron scheduler to activate')
+        self.logger.info('waiting for ramp cron scheduler to activate')
         self.assert_replicas(
-            TEST_SCALER.namespace, desired_replicas, 180,
-            f'deployment should have scaled to {desired_replicas} replicas after cron activated')
+            TEST_SCALER.namespace, TEST_SCALER.ramp_desired_replicas, 180,
+            f'deployment should have scaled to {TEST_SCALER.ramp_desired_replicas} replicas after cron activated')
 
-        # max 3 minutes in
-        self.logger.info('waiting for app insights scaler to activate')
-        TEST_SCALER.set_metric((TEST_SCALER.target_value + 1) * (TEST_SCALER.desired_replicas + 1))
+        self.logger.info('waiting for ramp cron scheduler to activate')
         self.assert_replicas(
-            TEST_SCALER.namespace, max_replicas, 180,
+            TEST_SCALER.namespace, TEST_SCALER.ramp_desired_replicas, 180,
+            f'deployment should have scaled to {TEST_SCALER.ramp_desired_replicas} replicas after cron activated')
+
+        self.logger.info('waiting for business cron scheduler to activate')
+        self.assert_replicas(
+            TEST_SCALER.namespace, TEST_SCALER.business_desired_replicas, 180,
+            f'deployment should have scaled to {TEST_SCALER.business_desired_replicas} replicas after cron activated')
+
+        self.logger.info('waiting for app insights scaler to activate')
+        TEST_SCALER.set_metric((TEST_SCALER.target_value + 1) * (TEST_SCALER.business_desired_replicas + 1))
+        self.assert_replicas(
+            TEST_SCALER.namespace, max_replicas, 240,
             f'deployment should have {max_replicas} replicas after app insights activated')
 
         self.logger.info('ensure replicas unchanged after image update')
@@ -252,17 +246,15 @@ class TestComboScaler(unittest.TestCase):
             TEST_SCALER.namespace, max_replicas, 5,
             f'deployment should have {max_replicas} replicas after image update')
 
-        # max 6 minutes in
         self.logger.info('waiting for app insights scaler to deactivate')
         TEST_SCALER.set_metric(0)
         self.assert_replicas(
-            TEST_SCALER.namespace, desired_replicas, 480,
-            f'deployment should have {desired_replicas} replicas after app insights deactivated')
+            TEST_SCALER.namespace, TEST_SCALER.business_desired_replicas, 480,
+            f'deployment should have {TEST_SCALER.business_desired_replicas} replicas after app insights deactivated')
 
-        # max 14 minutes in
         self.logger.info('set end time to now for quicker cron scale down')
         self.logger.info('updating scalers')
-        TEST_SCALER.cron_duration_mins = 1
+        TEST_SCALER.business_cron_duration_mins = 1
         self.helm_upgrade(TEST_SCALER)
 
         self.logger.info('waiting for cron scaler to deactivate')
