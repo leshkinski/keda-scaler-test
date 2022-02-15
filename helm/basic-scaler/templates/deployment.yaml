@@ -16,4 +16,4 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: nginx:{{ .Values.imageTag }}
+          image: nginx:latest

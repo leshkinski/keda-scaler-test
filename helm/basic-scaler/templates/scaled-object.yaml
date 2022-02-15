@@ -48,8 +48,8 @@ metadata:
 spec:
   cooldownPeriod: 5
   pollingInterval: 5
-  minReplicaCount: {{ .Values.minReplicas }}
-  maxReplicaCount: {{ .Values.maxReplicas }}
+  minReplicaCount: 2
+  maxReplicaCount: 8
   scaleTargetRef:
     name: test-deployment
   advanced:
@@ -65,16 +65,16 @@ spec:
   triggers:
     - type: cron
       metadata:
-        timezone: {{ .Values.timezone }}
-        start: {{ .Values.ramp.startMinute }} {{ .Values.ramp.startHour }} * * 0-6
-        end: {{ .Values.ramp.endMinute }} {{ .Values.ramp.endHour }} * * 0-6
-        desiredReplicas: "{{ .Values.ramp.desiredReplicas }}"
+        timezone: Europe/London
+        start: 00 * * * 0-6
+        end: 05 * * * 0-6
+        desiredReplicas: "3"
     - type: cron
       metadata:
-        timezone: {{ .Values.timezone }}
-        start: {{ .Values.business.startMinute }} {{ .Values.business.startHour }} * * 0-6
-        end: {{ .Values.business.endMinute }} {{ .Values.business.endHour }} * * 0-6
-        desiredReplicas: "{{ .Values.business.desiredReplicas }}"
+        timezone: Europe/London
+        start: 10 * * * 0-6
+        end: 15 * * * 0-6
+        desiredReplicas: "4"
 #    - type: azure-app-insights
 #      metadata:
 #        metricId: "customMetrics/{{ .Values.metric }}"
