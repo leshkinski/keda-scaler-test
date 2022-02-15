@@ -13,3 +13,4 @@ __pycache__
 generated
 .terraform
 .terraform.lock.hcl
+helm/basic-scaler/Chart.yaml
